@@ -314,7 +314,7 @@
 
             // --- (수정) Gemini 이미지 생성 API (Nano-banana, gemini-2.5-flash-image-preview) ---
             async function callImageGenApi(prompt, retries = 3, delay = 1000) {
-                const apiKey = ""; // API 키는 Canvas 환경에서 자동으로 제공됩니다.
+                const apiKey = "AIzaSyC05_m1GLE3hcq4hgzXWYbZX9EBYz31qCw"; // API 키는 Canvas 환경에서 자동으로 제공됩니다.
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`;
                 
                 // (수정) '4-cut comic style' 제거 -> 16컷 만화가 되는 문제 수정
@@ -556,4 +556,5 @@
         });
     </script>
 </body>
+
 </html>
