@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>우리 지역 4컷 만화 만들기 (AI 그림)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Jua&display=swap');
+        body {
+            font-family: 'Jua', 'Inter', sans-serif;
+            overscroll-behavior: none;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .font-jua { font-family: 'Jua', sans-serif; }
+        .comic-panel {
+            background-color: #f3f4f6;
+            border: 4px solid #4b5563;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: relative;
+            aspect-ratio: 1 / 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: #6b7280;
+            font-size: 1.125rem;
+            padding: 16px;
+            background-size: cover;
+            background-position: center;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .comic-panel:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+        }
+        /* 패널 플레이스홀더 텍스트 */
+        .comic-panel .placeholder-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            font-size: 1rem;
+        }
+        /* 패널에 이미지가 적용되면 플레이스홀더 숨김 */
+        .comic-panel.has-image .placeholder-text,
+        .comic-panel.has-dialogue .placeholder-text {
+            display: none;
+        }
+        /* 대사 텍스트 스타일 */
+        .dialogue-text {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            right: 8px;
+            background-color: rgba(255, 255, 255, 0.95);
+            border: 2px solid #4b5563;
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 1rem;
+            color: #1f2937;
+            text-align: center;
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: none; /* 기본 숨김 */
+            word-break: keep-all; /* 단어 단위 줄바꿈 */
+        }
+        /* 대사가 있을 때 표시 */
+        .comic-panel.has-dialogue .dialogue-text {
+            display: block;
+        }
+        /* 모달 스타일 */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 50; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.5); /* Black w/ opacity */
+            backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 10vh auto;
+            padding: 24px;
+            border: 1px solid #888;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        /* 로딩 스피너 */
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #6366F1;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* 프롬프트 가이드 */
+        .prompt-guide {
+            background-color: #f3f4f6;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 16px;
+            font-size: 0.9rem;
+            color: #374151;
+            line-height: 1.6;
+        }
+        .prompt-guide strong {
+            color: #4f46e5;
+        }
+        .prompt-guide code {
+            background-color: #e5e7eb;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        /* 툴 토글 버튼 */
+        .tool-toggle-group button {
+            transition: all 0.2s;
+        }
+        .tool-toggle-group button[aria-pressed="true"] {
+            background-color: #4f46e5;
+            color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .tool-toggle-group button[aria-pressed="false"] {
+            background-color: #e5e7eb;
+            color: #374151;
+        }
+        /* 오류 메시지 */
+        #error-message {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #ef4444;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            z-index: 100;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 md:p-8 min-h-screen flex items-center justify-center">
+
+    <div class="w-full max-w-4xl mx-auto">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 font-jua">🏞️ 우리 지역 4컷 만화 만들기 🎨</h1>
+            <p class="text-gray-600 mt-2">AI로 그림을 그리고, 나만의 대사를 넣어 멋진 4컷 만화를 완성해 보세요!</p>
+        </header>
+
+        <!-- 툴바 -->
+        <div class="mb-4 p-4 bg-white rounded-xl shadow-md flex flex-wrap gap-4 items-center justify-center">
+            
+            <!-- 툴 선택 -->
+            <div class="tool-toggle-group flex rounded-lg border border-gray-300">
+                <button id="tool-image" aria-pressed="true" class="font-jua px-4 py-2 rounded-l-lg text-sm md:text-base">
+                    🖼️ 그림 넣기
+                </button>
+                <button id="tool-dialogue" aria-pressed="false" class="font-jua px-4 py-2 rounded-r-lg text-sm md:text-base">
+                    💬 대사 넣기
+                </button>
+            </div>
+
+            <!-- 기타 기능 -->
+            <button id="get-story-idea" class="font-jua px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow transition text-sm md:text-base">
+                ✨ 만화 스토리 추천
+            </button>
+            <button id="clear-all" class="font-jua px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow transition text-sm md:text-base">
+                🗑️ 모두 비우기
+            </button>
+            <button id="download-comic" class="font-jua px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition text-sm md:text-base">
+                🖼️ 만화 저장하기
+            </button>
+        </div>
+
+        <!-- 4컷 만화 그리드 -->
+        <div id="comic-grid" class="grid grid-cols-2 gap-4 md:gap-6">
+            <div id="panel-1" class="comic-panel">
+                <div class="placeholder-text">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="#9ca3af" viewBox="0 0 256 256"><path d="M224,40H32A16,16,0,0,0,16,56V200a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V56A16,16,0,0,0,224,40Zm0,16V164.38l-45.19-45.19a16,16,0,0,0-22.62,0L112,163.38l-18.3-18.3a16,16,0,0,0-22.62,0L32,184V56Zm0,144H32V195.6l45.09-45.09a16.14,16.14,0,0,0,.3-22.32L93.5,112l45.2,45.19a16,16,0,0,0,22.62,0L208,110.85V56h1.15l.23.23L224,70.85v123.3Z"></path></svg>
+                    <span>1. 클릭해서<br>그림/대사 추가</span>
+                </div>
+                <div class="dialogue-text"></div>
+            </div>
+            <div id="panel-2" class="comic-panel">
+                <div class="placeholder-text">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="#9ca3af" viewBox="0 0 256 256"><path d="M224,40H32A16,16,0,0,0,16,56V200a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V56A16,16,0,0,0,224,40Zm0,16V164.38l-45.19-45.19a16,16,0,0,0-22.62,0L112,163.38l-18.3-18.3a16,16,0,0,0-22.62,0L32,184V56Zm0,144H32V195.6l45.09-45.09a16.14,16.14,0,0,0,.3-22.32L93.5,112l45.2,45.19a16,16,0,0,0,22.62,0L208,110.85V56h1.15l.23.23L224,70.85v123.3Z"></path></svg>
+                    <span>2. 클릭해서<br>그림/대사 추가</span>
+                </div>
+                <div class="dialogue-text"></div>
+            </div>
+            <div id="panel-3" class="comic-panel">
+                <div class="placeholder-text">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="#9ca3af" viewBox="0 0 256 256"><path d="M224,40H32A16,16,0,0,0,16,56V200a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V56A16,16,0,0,0,224,40Zm0,16V164.38l-45.19-45.19a16,16,0,0,0-22.62,0L112,163.38l-18.3-18.3a16,16,0,0,0-22.62,0L32,184V56Zm0,144H32V195.6l45.09-45.09a16.14,16.14,0,0,0,.3-22.32L93.5,112l45.2,45.19a16,16,0,0,0,22.62,0L208,110.85V56h1.15l.23.23L224,70.85v123.3Z"></path></svg>
+                    <span>3. 클릭해서<br>그림/대사 추가</span>
+                </div>
+                <div class="dialogue-text"></div>
+            </div>
+            <div id="panel-4" class="comic-panel">
+                <div class="placeholder-text">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="#9ca3af" viewBox="0 0 256 256"><path d="M224,40H32A16,16,0,0,0,16,56V200a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V56A16,16,0,0,0,224,40Zm0,16V164.38l-45.19-45.19a16,16,0,0,0-22.62,0L112,163.38l-18.3-18.3a16,16,0,0,0-22.62,0L32,184V56Zm0,144H32V195.6l45.09-45.09a16.14,16.14,0,0,0,.3-22.32L93.5,112l45.2,45.19a16,16,0,0,0,22.62,0L208,110.85V56h1.15l.23.23L224,70.85v123.3Z"></path></svg>
+                    <span>4. 클릭해서<br>그림/대사 추가</span>
+                </div>
+                <div class="dialogue-text"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI 이미지 생성 모달 -->
+    <div id="image-modal" class="modal">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold mb-4 font-jua">🖼️ 컷 그림 생성하기</h2>
+            <p class="text-gray-600 mb-4">AI에게 어떤 그림을 그려달라고 할까요?<br>우리 지역의 자랑거리를 자세히 설명해 주세요.</p>
+            <textarea id="image-prompt" class="w-full h-24 p-3 border border-gray-300 rounded-lg resize-none" placeholder="예: '청주 삼겹살 거리'에서 '맛있게 삼겹살을 굽고 있는' '돼지 캐릭터'"></textarea>
+            
+            <div class="prompt-guide">
+                <strong class="font-jua">💡 이렇게 설명하면 그림이 잘 나와요!</strong>
+                <ul class="list-disc list-inside mt-2">
+                    <li><strong>[누가/무엇을]</strong>: <code>귀여운 강아지</code>, <code>용감한 소방관</code></li>
+                    <li><strong>[어디에서]</strong>: <code>속초 바다 앞에서</code>, <code>멋진 성곽 위에서</code></li>
+                    <li><strong>[무엇을 하나요]</strong>: <code>신나게 춤을 추는</code>, <code>책을 읽고 있는</code></li>
+                </ul>
+                <hr class="my-2 border-gray-300">
+                <p><strong>[합쳐보기]</strong> <code>'속초 바다 앞에서 신나게 춤을 추는 귀여운 강아지'</code></p>
+            </div>
+
+            <div id="image-preview-container" class="my-4" style="display: none;">
+                <p class="font-bold text-gray-700">미리보기:</p>
+                <img id="image-preview" src="" alt="AI 생성 이미지 미리보기" class="w-full h-auto rounded-lg border border-gray-300 mt-2">
+            </div>
+            
+            <div id="image-loader" class="loader" style="display: none;"></div>
+
+            <div class="flex justify-end gap-3 mt-4">
+                <button id="close-image-modal" class="font-jua px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg">취소</button>
+                <button id="apply-image" class="font-jua px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg" style="display: none;">이 그림으로 적용</button>
+                <button id="generate-image" class="font-jua px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg">그림 생성하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 대사 입력 모달 -->
+    <div id="dialogue-modal" class="modal">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold mb-4 font-jua">💬 대사 넣기</h2>
+            <p class="text-gray-600 mb-4">만화 컷에 들어갈 대사나 설명을 입력해 주세요.</p>
+            <textarea id="dialogue-prompt" class="w-full h-24 p-3 border border-gray-300 rounded-lg resize-none" placeholder="예: 와! 정말 맛있다!"></textarea>
+            <div class="flex justify-end gap-3 mt-4">
+                <button id="clear-dialogue" class="font-jua px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg">대사 지우기</button>
+                <button id="close-dialogue-modal" class="font-jua px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg">취소</button>
+                <button id="apply-dialogue" class="font-jua px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg">대사 적용하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 만화 스토리 추천 모달 -->
+    <div id="story-idea-modal" class="modal">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold mb-4 font-jua">✨ 만화 아이디어 생성기</h2>
+            <p class="text-gray-600 mb-4">만화로 만들고 싶은 '우리 지역 자랑거리'를 알려주세요. AI가 4컷 만화 스토리를 추천해 줄게요!</p>
+            <input type="text" id="story-idea-prompt" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="예: 청주 삼겹살, 부산 해운대, 전주 한옥마을">
+            
+            <div id="story-idea-loader" class="loader" style="display: none;"></div>
+            
+            <div id="story-idea-result" class="mt-4 p-3 bg-gray-100 rounded-lg" style="display: none;">
+                <!-- AI가 생성한 스토리가 여기에 표시됩니다 -->
+            </div>
+            
+            <div class="flex justify-end gap-3 mt-4">
+                <button id="close-story-idea-modal" class="font-jua px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg">닫기</button>
+                <button id="generate-story-idea" class="font-jua px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg">아이디어 생성!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 오류 메시지 알림 -->
+    <div id="error-message">오류가 발생했습니다. 잠시 후 다시 시도해 주세요.</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <script>
+        // === 전역 변수 및 설정 ===
+        // !!! 중요 !!!
+        // 여기에 Google AI Studio에서 발급받은 API 키를 붙여넣으세요.
+        const apiKey = "AIzaSyC05_m1GLE3hcq4hgzXWYbZX9EBYz31qCw"; // 예: "AIzaSy...your...api...key"
+
+        let currentTool = 'image'; // 'image' 또는 'dialogue'
+        let currentPanel = null; // 현재 선택된 패널 (panel-1, panel-2 등)
+        const maxRetries = 3; // API 재시도 횟수
+        
+        // 모델 이름
+        const IMAGE_GEN_MODEL = "gemini-2.5-flash-image-preview"; // 나노바나나 (이미지 생성)
+        const TEXT_GEN_MODEL = "gemini-2.5-flash-preview-09-2025"; // 텍스트 생성 (스토리 추천)
+
+        // === DOM 요소 ===
+        const toolImageBtn = document.getElementById('tool-image');
+        const toolDialogueBtn = document.getElementById('tool-dialogue');
+        const panels = document.querySelectorAll('.comic-panel');
+        const clearAllBtn = document.getElementById('clear-all');
+        const downloadBtn = document.getElementById('download-comic');
+        const errorMessage = document.getElementById('error-message');
+
+        // 이미지 모달
+        const imageModal = document.getElementById('image-modal');
+        const closeImageModalBtn = document.getElementById('close-image-modal');
+        const generateImageBtn = document.getElementById('generate-image');
+        const applyImageBtn = document.getElementById('apply-image');
+        const imagePrompt = document.getElementById('image-prompt');
+        const imageLoader = document.getElementById('image-loader');
+        const imagePreviewContainer = document.getElementById('image-preview-container');
+        const imagePreview = document.getElementById('image-preview');
+        let generatedImageData = null; // AI가 생성한 이미지 base64 데이터
+
+        // 대사 모달
+        const dialogueModal = document.getElementById('dialogue-modal');
+        const closeDialogueModalBtn = document.getElementById('close-dialogue-modal');
+        const applyDialogueBtn = document.getElementById('apply-dialogue');
+        const clearDialogueBtn = document.getElementById('clear-dialogue');
+        const dialoguePrompt = document.getElementById('dialogue-prompt');
+
+        // 스토리 추천 모달
+        const storyIdeaModal = document.getElementById('story-idea-modal');
+        const getStoryIdeaBtn = document.getElementById('get-story-idea');
+        const closeStoryIdeaModalBtn = document.getElementById('close-story-idea-modal');
+        const generateStoryIdeaBtn = document.getElementById('generate-story-idea');
+        const storyIdeaPrompt = document.getElementById('story-idea-prompt');
+        const storyIdeaLoader = document.getElementById('story-idea-loader');
+        const storyIdeaResult = document.getElementById('story-idea-result');
+
+
+        // === 툴 선택 ===
+        function setTool(tool) {
+            currentTool = tool;
+            if (tool === 'image') {
+                toolImageBtn.setAttribute('aria-pressed', 'true');
+                toolDialogueBtn.setAttribute('aria-pressed', 'false');
+            } else {
+                toolImageBtn.setAttribute('aria-pressed', 'false');
+                toolDialogueBtn.setAttribute('aria-pressed', 'true');
+            }
+        }
+
+        toolImageBtn.addEventListener('click', () => setTool('image'));
+        toolDialogueBtn.addEventListener('click', () => setTool('dialogue'));
+
+        // === 패널 클릭 이벤트 ===
+        panels.forEach(panel => {
+            panel.addEventListener('click', () => {
+                currentPanel = panel.id; // 예: "panel-1"
+                if (currentTool === 'image') {
+                    openImageModal();
+                } else {
+                    openDialogueModal();
+                }
+            });
+        });
+
+        // === 이미지 생성 모달 ===
+        function openImageModal() {
+            // 모달 초기화
+            imagePrompt.value = '';
+            imagePreview.src = '';
+            imagePreviewContainer.style.display = 'none';
+            applyImageBtn.style.display = 'none';
+            generateImageBtn.style.display = 'block';
+            imageLoader.style.display = 'none';
+            generatedImageData = null;
+            imageModal.style.display = 'flex';
+        }
+
+        closeImageModalBtn.addEventListener('click', () => {
+            imageModal.style.display = 'none';
+        });
+
+        generateImageBtn.addEventListener('click', async () => {
+            const prompt = imagePrompt.value;
+            if (!prompt) {
+                showError("그림 설명을 입력해 주세요!");
+                return;
+            }
+            if (!apiKey) {
+                showError("API 키가 설정되지 않았습니다.");
+                return;
+            }
+
+            // 프롬프트에 '글자 없음' 지시어 추가
+            const finalPrompt = `${prompt}. 아이들이 보는 만화 스타일. No text, no letters, no dialogue bubbles.`;
+
+            // UI 업데이트
+            generateImageBtn.style.display = 'none';
+            imageLoader.style.display = 'block';
+            imagePreviewContainer.style.display = 'none';
+
+            try {
+                generatedImageData = await callImageGenApi(finalPrompt);
+                
+                if (generatedImageData) {
+                    imagePreview.src = `data:image/png;base64,${generatedImageData}`;
+                    imagePreviewContainer.style.display = 'block';
+                    applyImageBtn.style.display = 'block';
+                } else {
+                    throw new Error("이미지 데이터가 없습니다.");
+                }
+            } catch (error) {
+                console.error('Image generation error:', error);
+                showError(`그림 생성에 실패했습니다. (이유: ${error.message})`);
+                generateImageBtn.style.display = 'block'; // 버튼 복구
+            } finally {
+                imageLoader.style.display = 'none';
+            }
+        });
+
+        applyImageBtn.addEventListener('click', () => {
+            if (generatedImageData && currentPanel) {
+                const panel = document.getElementById(currentPanel);
+                panel.style.backgroundImage = `url('data:image/png;base64,${generatedImageData}')`;
+                panel.classList.add('has-image');
+                imageModal.style.display = 'none';
+            }
+        });
+
+        // === 대사 입력 모달 ===
+        function openDialogueModal() {
+            const panel = document.getElementById(currentPanel);
+            const currentDialogue = panel.querySelector('.dialogue-text').textContent;
+            dialoguePrompt.value = currentDialogue;
+            dialogueModal.style.display = 'flex';
+        }
+
+        closeDialogueModalBtn.addEventListener('click', () => {
+            dialogueModal.style.display = 'none';
+        });
+
+        applyDialogueBtn.addEventListener('click', () => {
+            const dialogue = dialoguePrompt.value;
+            const panel = document.getElementById(currentPanel);
+            const dialogueEl = panel.querySelector('.dialogue-text');
+
+            if (dialogue) {
+                dialogueEl.textContent = dialogue;
+                panel.classList.add('has-dialogue');
+            } else {
+                // 대사가 비어있으면 제거
+                dialogueEl.textContent = '';
+                panel.classList.remove('has-dialogue');
+            }
+            dialogueModal.style.display = 'none';
+        });
+
+        clearDialogueBtn.addEventListener('click', () => {
+            dialoguePrompt.value = '';
+            // 적용 버튼을 눌러야 실제 패널에서 지워집니다.
+            // 또는, 여기서 바로 지울 수도 있습니다.
+            const panel = document.getElementById(currentPanel);
+            panel.querySelector('.dialogue-text').textContent = '';
+            panel.classList.remove('has-dialogue');
+            dialogueModal.style.display = 'none';
+        });
+
+        // === 스토리 추천 모달 ===
+        getStoryIdeaBtn.addEventListener('click', () => {
+            storyIdeaPrompt.value = '';
+            storyIdeaResult.style.display = 'none';
+            storyIdeaLoader.style.display = 'none';
+            storyIdeaModal.style.display = 'flex';
+        });
+
+        closeStoryIdeaModalBtn.addEventListener('click', () => {
+            storyIdeaModal.style.display = 'none';
+        });
+
+        generateStoryIdeaBtn.addEventListener('click', async () => {
+            const prompt = storyIdeaPrompt.value;
+            if (!prompt) {
+                showError("지역 자랑거리를 입력해 주세요!");
+                return;
+            }
+            if (!apiKey) {
+                showError("API 키가 설정되지 않았습니다.");
+                return;
+            }
+
+            // 시스템 프롬프트 (지시)
+            const systemPrompt = "당신은 4컷 만화 시나리오 작가입니다. 아이들이 이해하기 쉽도록, 4컷 만화 스토리를 4개의 간단한 문장으로 요약해 주세요. 각 문장은 1. 2. 3. 4. 형식으로 시작해야 합니다.";
+            const userPrompt = `"${prompt}"에 대한 4컷 만화 스토리`;
+
+            storyIdeaLoader.style.display = 'block';
+            storyIdeaResult.style.display = 'none';
+
+            try {
+                const story = await callTextGenApi(systemPrompt, userPrompt);
+                
+                if (story) {
+                    // AI 응답을 HTML로 변환 (줄바꿈 처리)
+                    storyIdeaResult.innerHTML = story.replace(/\n/g, '<br>');
+                    storyIdeaResult.style.display = 'block';
+                } else {
+                    throw new Error("스토리 데이터가 없습니다.");
+                }
+            } catch (error) {
+                console.error('Story generation error:', error);
+                showError(`스토리 생성에 실패했습니다. (이유: ${error.message})`);
+            } finally {
+                storyIdeaLoader.style.display = 'none';
+            }
+        });
+
+
+        // === 기타 기능 ===
+        clearAllBtn.addEventListener('click', () => {
+            panels.forEach(panel => {
+                panel.style.backgroundImage = 'none';
+                panel.classList.remove('has-image');
+                panel.querySelector('.dialogue-text').textContent = '';
+                panel.classList.remove('has-dialogue');
+            });
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            // 다운로드 시 패널 테두리가 잘리지 않도록 그리드 영역을 저장
+            const grid = document.getElementById('comic-grid');
+            html2canvas(grid, {
+                scale: 2, // 해상도 2배로 저장
+                backgroundColor: null // 배경색 투명하게 (부모 배경색 사용)
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = 'my_region_comic_ai.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }).catch(err => {
+                console.error('Download error:', err);
+                showError("만화 저장에 실패했습니다.");
+            });
+        });
+
+        // === 오류 메시지 표시 ===
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            setTimeout(() => {
+                errorMessage.style.display = 'none';
+            }, 3000); // 3초 후 사라짐
+        }
+
+        // === API 호출 (Exponential Backoff 포함) ===
+
+        /**
+         * API 호출을 재시도와 함께 수행하는 래퍼 함수
+         * @param {string} apiUrl - API 엔드포인트 URL
+         * @param {object} payload - API 요청 본문
+         * @param {number} retryCount - 현재 재시도 횟수
+         * @returns {Promise<object>} API 응답 JSON
+         */
+        async function fetchWithRetry(apiUrl, payload, retryCount = 0) {
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    // !!! 중요 !!!
+                    // 깃허브에서 403 오류가 발생할 때, `referrerPolicy`가 원인이었습니다.
+                    // 이 코드를 삭제하여 브라우저의 기본 정책(주소(referer)를 보냄)을 따르도록 합니다.
+                    // 이렇게 해야 Google Cloud Console의 'HTTP 리퍼러' 설정이 올바르게 작동합니다.
+                    // referrerPolicy: "no-referrer" // <--- 이 코드를 삭제했습니다.
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return await response.json();
+
+            } catch (error) {
+                if (retryCount < maxRetries) {
+                    const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+                    console.warn(`API call failed, retrying in ${delay}ms... (Attempt ${retryCount + 1})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return fetchWithRetry(apiUrl, payload, retryCount + 1);
+                } else {
+                    console.error('API call failed after max retries:', error);
+                    throw new Error(`최대 재시도 횟수(${maxRetries}회)에 도달했습니다. ${error.message}`);
+                }
+            }
+        }
+
+        /**
+         * (Nano-Banana) 이미지 생성 API 호출
+         * @param {string} prompt - 사용자 프롬프트
+         * @returns {Promise<string>} Base64 인코딩된 이미지 데이터
+         */
+        async function callImageGenApi(prompt) {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_GEN_MODEL}:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{
+                    parts: [{ text: prompt }]
+                }],
+                generationConfig: {
+                    responseModalities: ['IMAGE']
+                },
+            };
+
+            const result = await fetchWithRetry(apiUrl, payload);
+            
+            // 응답 구조 확인 (nano-banana)
+            const base64Data = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+            if (!base64Data) {
+                console.error("Invalid response structure from Image API:", result);
+                throw new Error("API 응답에서 이미지 데이터를 찾을 수 없습니다.");
+            }
+            return base64Data;
+        }
+
+        /**
+         * 텍스트 생성 API 호출 (스토리 추천용)
+         * @param {string} systemPrompt - 시스템 지시어
+         * @param {string} userPrompt - 사용자 프롬프트
+         * @returns {Promise<string>} 생성된 텍스트
+         */
+        async function callTextGenApi(systemPrompt, userPrompt) {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${TEXT_GEN_MODEL}:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: userPrompt }] }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+            
+            const result = await fetchWithRetry(apiUrl, payload);
+
+            // 응답 구조 확인 (gemini-flash)
+            const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) {
+                console.error("Invalid response structure from Text API:", result);
+                throw new Error("API 응답에서 텍스트 데이터를 찾을 수 없습니다.");
+            }
+            return text;
+        }
+
+    </script>
+</body>
+</html>
