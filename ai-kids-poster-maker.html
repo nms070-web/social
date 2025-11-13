@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 키즈 포스터 메이커</title>
+    <!-- Tailwind CSS 로드 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 아이들이 좋아할 만한 부드러운 글꼴 */
+        @import url('https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap');
+        body {
+            font-family: 'Nanum Gothic', sans-serif;
+        }
+        /* 버튼 클릭 시 작은 애니메이션 */
+        .suggestion-btn:active {
+            transform: scale(0.95);
+            transition: transform 0.1s ease;
+        }
+    </style>
+</head>
+<body class="bg-blue-50 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white p-6 md:p-8 rounded-2xl shadow-xl w-full max-w-2xl">
+        
+        <header class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-blue-600">🎨 AI 포스터 그리기 🎨</h1>
+            <p class="text-gray-600 mt-2">만들고 싶은 포스터를 자유롭게 상상해 보세요!</p>
+        </header>
+
+        <!-- 프롬프트 제안 섹션 -->
+        <div class="mb-4">
+            <p class="font-bold text-lg text-gray-700 mb-3">그림 힌트! (클릭해서 추가해요)</p>
+            <div id="suggestions-container" class="space-y-3">
+                <!-- 제안 카테고리 (자바스크립트에서 생성) -->
+            </div>
+        </div>
+
+        <!-- 프롬프트 입력 및 제어 -->
+        <div class="mb-4">
+            <label for="prompt-input" class="block font-bold text-lg text-gray-700 mb-2">나의 상상 (여기에 입력해요)</label>
+            <textarea id="prompt-input" rows="3" class="w-full p-3 border-2 border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="예: 하늘을 나는 고래, 무지개 숲"></textarea>
+            <button id="clear-btn" class="text-sm text-gray-500 hover:text-red-500 mt-2">다시 쓰기</button>
+        </div>
+
+        <!-- 생성 버튼 -->
+        <button id="generate-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-lg shadow-md transition duration-300 transform hover:scale-105">
+            포스터 만들기! ✨
+        </button>
+
+        <!-- 로딩 및 결과 표시 -->
+        <div id="result-container" class="mt-6 text-center">
+            <!-- 로딩 스피너 -->
+            <div id="loading" class="hidden flex-col items-center justify-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-500"></div>
+                <p class="text-blue-600 mt-4">멋진 포스터를 그리고 있어요... 잠시만 기다려 주세요!</p>
+            </div>
+            
+            <!-- 오류 메시지 -->
+            <div id="error-message" class="hidden text-red-500 p-3 bg-red-100 rounded-lg">
+                <!-- 오류 내용이 여기에 표시됩니다 -->
+            </div>
+
+            <!-- 생성된 이미지 -->
+            <div id="image-wrapper" class->
+                <img id="poster-image" src="" alt="생성된 포스터" class="hidden rounded-lg shadow-md max-w-full h-auto mx-auto">
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- 요소 선택 ---
+        const promptInput = document.getElementById('prompt-input');
+        const generateBtn = document.getElementById('generate-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const loadingEl = document.getElementById('loading');
+        const errorEl = document.getElementById('error-message');
+        const posterImage = document.getElementById('poster-image');
+        const imageWrapper = document.getElementById('image-wrapper');
+        const suggestionsContainer = document.getElementById('suggestions-container');
+
+        // --- 프롬프트 제안 데이터 ---
+        const suggestions = {
+            "누가? 🦖": {
+                color: "bg-green-100 text-green-800",
+                items: ["우주비행사 강아지", "노래하는 공룡", "무지개 고양이", "슈퍼히어로 토끼", "춤추는 로봇", "마법사 곰"]
+            },
+            "어디서? 🌳": {
+                color: "bg-yellow-100 text-yellow-800",
+                items: ["달 위에서", "마법의 숲에서", "구름으로 만든 성", "바다 속 파티", "사탕 나라", "장난감 도시"]
+            },
+            "무엇을? 🍦": {
+                color: "bg-pink-100 text-pink-800",
+                items: ["점프하며", "아이스크림을 먹으며", "책을 읽으며", "친구들과 놀며", "자전거를 타며", "별을 잡으며"]
+            },
+            "어떻게? 🎨": {
+                color: "bg-purple-100 text-purple-800",
+                items: ["만화 스타일로", "색연필로 그린 것처럼", "반짝반짝 빛나게", "알록달록하게", "꿈꾸는 것처럼", "아주 단순하게"]
+            }
+        };
+
+        // --- 프롬프트 제안 UI 생성 ---
+        function createSuggestionButtons() {
+            Object.entries(suggestions).forEach(([category, data]) => {
+                const categoryDiv = document.createElement('div');
+                
+                const title = document.createElement('span');
+                title.textContent = category;
+                title.className = "font-bold mr-2 text-sm";
+                categoryDiv.appendChild(title);
+
+                const buttonWrapper = document.createElement('div');
+                buttonWrapper.className = "flex flex-wrap gap-2 mt-1";
+
+                data.items.forEach(item => {
+                    const button = document.createElement('button');
+                    button.textContent = item;
+                    button.className = `suggestion-btn ${data.color} px-3 py-1 rounded-full text-sm font-medium transition duration-200 hover:opacity-80`;
+                    button.dataset.text = item; // 데이터를 버튼에 저장
+                    button.addEventListener('click', () => {
+                        // 프롬프트에 텍스트 추가 (앞뒤로 공백 추가)
+                        promptInput.value += ` ${item} `;
+                    });
+                    buttonWrapper.appendChild(button);
+                });
+
+                categoryDiv.appendChild(buttonWrapper);
+                suggestionsContainer.appendChild(categoryDiv);
+            });
+        }
+        
+        createSuggestionButtons(); // 페이지 로드 시 버튼 생성
+
+        // --- 이벤트 리스너 ---
+        clearBtn.addEventListener('click', () => {
+            promptInput.value = '';
+            posterImage.classList.add('hidden');
+            errorEl.classList.add('hidden');
+        });
+
+        generateBtn.addEventListener('click', generatePoster);
+
+        // --- API 호출 (지수 백오프 포함) ---
+        async function fetchWithBackoff(url, options, retries = 3, delay = 1000) {
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    if (retries > 0) {
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        return fetchWithBackoff(url, options, retries - 1, delay * 2);
+                    }
+                    throw new Error(`HTTP 오류! 상태: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                if (retries > 0) {
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return fetchWithBackoff(url, options, retries - 1, delay * 2);
+                }
+                throw error;
+            }
+        }
+
+        // --- 포스터 생성 함수 ---
+        async function generatePoster() {
+            const userPrompt = promptInput.value.trim();
+
+            if (!userPrompt) {
+                showError("만들고 싶은 포스터에 대해 먼저 알려주세요!");
+                return;
+            }
+
+            // UI 상태 업데이트: 로딩 시작
+            loadingEl.classList.remove('hidden');
+            errorEl.classList.add('hidden');
+            posterImage.classList.add('hidden');
+            generateBtn.disabled = true;
+            generateBtn.textContent = "그리는 중...";
+
+            // AI에게 더 좋은 포스터를 만들도록 프롬프트를 다듬습니다.
+            const fullPrompt = `아이들을 위한 포스터: ${userPrompt}. 밝고 알록달록한 색감, 단순한 모양, 재미있고 장난스러운 스타일, 글자 없음`;
+
+            // *** 2단계: API 키 삽입 ***
+            // 아래의 "AIzaSyC05_m1GLE3hcq4hgzXWYbZX9EBYz31qCw" 안에 선생님의 API 키를 붙여넣어 주세요.
+            const apiKey = ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`;
+
+            const payload = {
+                contents: [{
+                    parts: [{ text: fullPrompt }]
+                }],
+                generationConfig: {
+                    responseModalities: ['TEXT', 'IMAGE']
+                },
+            };
+
+            try {
+                // *** 1단계: 코드 수정 (완료) ***
+                // referrerPolicy 코드가 없으므로 이미 해결되었습니다.
+                const result = await fetchWithBackoff(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const base64Data = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+
+                if (base64Data) {
+                    // 성공: 이미지 표시
+                    posterImage.src = `data:image/png;base64,${base64Data}`;
+                    posterImage.classList.remove('hidden');
+                } else {
+                    // 오류: 응답에 이미지가 없음
+                    console.error("API 응답에 이미지 데이터가 없습니다:", result);
+                    showError("이런! 이미지를 가져오지 못했어요. 프롬프트를 조금 바꿔서 다시 시도해 볼까요?");
+                }
+
+            } catch (error) {
+                // 네트워크 또는 API 오류
+                console.error("API 호출 중 오류 발생:", error);
+                showError("포스터를 그리다가 문제가 생겼어요. 인터넷 연결을 확인하고 다시 시도해 주세요.");
+            } finally {
+                // UI 상태 업데이트: 로딩 종료
+                loadingEl.classList.add('hidden');
+                generateBtn.disabled = false;
+                generateBtn.textContent = "포스터 만들기! ✨";
+            }
+        }
+
+        // --- 오류 메시지 표시 함수 ---
+        function showError(message) {
+            errorEl.textContent = message;
+            errorEl.classList.remove('hidden');
+            loadingEl.classList.add('hidden');
+        }
+
+    </script>
+</body>
+</html>
